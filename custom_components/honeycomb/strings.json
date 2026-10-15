@@ -1,0 +1,35 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Honeycomb",
+        "description": "Use an ingest key from the Honeycomb environment the home's telemetry should go to.",
+        "data": {
+          "api_key": "API key",
+          "region": "Region",
+          "service_name": "Service name"
+        },
+        "data_description": {
+          "api_key": "Honeycomb › Environment settings › API keys. An ingest key is enough.",
+          "region": "Where your Honeycomb team keeps its data.",
+          "service_name": "The dataset the home's traces arrive in."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach Honeycomb.",
+      "invalid_auth": "Honeycomb did not accept this API key."
+    },
+    "abort": {
+      "already_configured": "This Honeycomb environment is already connected."
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "us": "United States (api.honeycomb.io)",
+        "eu": "Europe (api.eu1.honeycomb.io)"
+      }
+    }
+  }
+}

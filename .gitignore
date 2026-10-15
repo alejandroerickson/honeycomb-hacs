@@ -1,0 +1,36 @@
+# Private working material: never part of the public repository
+/_private/
+
+# Secrets and local settings
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# A Home Assistant run for development keeps its state here
+/config/
+
+# OS and editor
+.DS_Store
+.idea/
+.vscode/*
+
+# Agent state that belongs to one machine: local settings, sessions, memory, tool configuration.
+/.claude/*
+!/.claude/skills
+*.local.md
+*.local.json
+.mcp.json
+.cursor/
+.codex/
+
+# Documentation holds reference knowledge only
+/okf/log.md

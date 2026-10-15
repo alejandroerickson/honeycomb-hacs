@@ -1,0 +1,35 @@
+[project]
+name = "honeycomb-hacs"
+version = "0.1.0"
+description = "A Home Assistant integration that sends a home's events to Honeycomb as traces."
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.14.2"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest-homeassistant-custom-component==0.13.372",
+    "ruff>=0.14",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 110
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "ASYNC"]
+ignore = ["E501"]  # the formatter sets line length
+
+[tool.ruff.lint.isort]
+known-first-party = ["custom_components"]
+combine-as-imports = true
