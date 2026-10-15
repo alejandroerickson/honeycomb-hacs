@@ -14,7 +14,8 @@ Draft: this is the design being built. The [roadmap](02-roadmap.md) says what ex
 Everything comes from Home Assistant's public interfaces: the event bus, the state machine and the
 area, device and entity registries
 ([decision](../decisions/only-public-home-assistant-interfaces.md)). Spans go to Honeycomb as OTLP
-over HTTP, encoded as JSON, with the integration's service name as `service.name`
+over HTTP, encoded as JSON, with the integration's service name as `service.name` and the
+instrumentation scope `honeycomb-hacs` at the integration's version
 ([decision](../decisions/no-requirements-beyond-home-assistant.md)).
 
 ## 1.1 State spans: how long each state lasted
@@ -23,12 +24,18 @@ When an entity's state changes, the integration MUST send one span covering the 
 ended: from its `last_changed` to the new state's `last_changed`. The span is named
 `<domain> <old state>` (`light on`, `binary_sensor on`, `climate heat`).
 
-Attributes: `ha.entity_id`, `ha.domain`, `ha.state` (the state that ended), `ha.next_state`,
-`ha.area`, `ha.floor`, `ha.device_class`, `ha.unit`, `ha.friendly_name`, and for a numeric state
-`ha.value` as a number. Attributes the user allows are added as `ha.attr.<name>`.
+Only a change of state ends one. An entity appearing, an entity being removed and a change of
+attributes alone send nothing.
 
-A span whose state ended in a change caused by a context (a person, an automation) carries
-`ha.context.id` and joins that context's trace (1.3). Otherwise it is a trace of its own.
+Attributes: `ha.entity_id`, `ha.domain`, `ha.state` (the state that ended), `ha.next_state`,
+`ha.area`, `ha.floor`, `ha.device_class`, `ha.unit`, `ha.friendly_name`, and for a state that
+reads as a finite number `ha.value` as a float. `ha.area` is the entity's area, or else its
+device's, and `ha.floor` that area's floor, both by name. An attribute with no value is left off.
+Attributes the user allows are added as `ha.attr.<name>`.
+
+A span whose state ended in a change caused by a context (one with a user or a parent: a person, an
+automation) carries `ha.context.id` and joins that context's trace (1.3). Otherwise it is a trace
+of its own.
 
 ◆ Decision: a span describes a state that *ended*, so its duration is known when it is sent and
 nothing is held in memory longer than one state.
@@ -68,15 +75,33 @@ The integration MUST NOT send, unless the user includes them by name:
 
 - the domains `device_tracker`, `person` and `zone`, and any attribute holding a latitude,
   longitude or GPS accuracy;
+- entities of the companion app (the `mobile_app` platform): a phone's sensors report where its
+  owner is, their activity, sleep, steps, networks and notifications;
 - sensors whose device class or unit describe a body (heart rate, blood pressure, sleep, steps,
   body temperature and the like);
 - `camera` and `image` entities, media titles, and any attribute named `entity_picture`,
   `access_token` or `token`.
+
+Home Assistant has no device class for most body measurements, so a `sensor` or `binary_sensor` is
+taken to describe a body when its unit is one only a body has (`bpm`, `beats/min`, `breaths/min`,
+`steps`, `mg/dL`, `mmol/L`) or its entity id has a body measurement as a word (`heart_rate`,
+`hrv`, `blood_pressure`, `systolic`, `glucose`, `spo2`, `respiratory_rate`, `body_fat`, `weight`,
+`sleep`, `asleep`, `steps`, `vo2max` and the like; the list is in `filters.py`). An entity is left
+out when either the state that ended or the next one matches.
 
 Users choose more with include and exclude rules by domain, entity id pattern, area or device
 class ([decision](../decisions/sensitive-data-stays-home-by-default.md)).
 
 ## 1.6 Delivery
 
-Spans are batched and sent at least every 10 seconds. If Honeycomb is unreachable, a bounded
-queue holds them and the oldest are dropped first; Home Assistant never waits on Honeycomb.
+Spans are batched and sent at least every 10 seconds, at once when 1,000 are waiting, and when Home
+Assistant stops or the integration is unloaded. A request carries at most 1,000 spans. Home
+Assistant never waits on Honeycomb: queueing a span is all an event listener does.
+
+- **Honeycomb unreachable** (a connection error, a timeout after 10 seconds, HTTP 408, 429 or 5xx):
+  the batch goes back to the front of the queue for the next attempt. One warning is logged, and
+  one note when sending works again.
+- **A batch refused** (any other HTTP 4xx): it is dropped and the error logged, since sending it
+  again would fail the same way.
+- **The queue is full** (10,000 spans): the oldest are dropped first. One warning is logged, then
+  how many were dropped once a batch is sent.

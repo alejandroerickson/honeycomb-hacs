@@ -20,8 +20,8 @@ Honeycomb as traces:
 It runs inside Home Assistant, so there is nothing else to host, and it reads only Home Assistant's
 public interfaces, so it does not break when Home Assistant's internals change.
 
-> **Status: early.** The integration connects to Honeycomb and checks the key; sending is being
-> built. See the [roadmap](okf/spec/02-roadmap.md).
+> **Status: early.** It sends how long each state lasted. People's actions, automation runs and
+> Home Assistant's health are being built. See the [roadmap](okf/spec/02-roadmap.md).
 
 ## Install
 
@@ -35,9 +35,9 @@ Turn it off by disabling the integration.
 
 ## What it sends, and what it does not
 
-By default it leaves out people's locations (`device_tracker`, `person`, `zone`) and sensors that
-describe a body (heart rate, sleep, steps and the like). What else stays home is yours to choose:
-see [what is sent](okf/spec/01-telemetry.md).
+By default it leaves out people's locations (`device_tracker`, `person`, `zone`), phones' sensors
+from the companion app, sensors that describe a body (heart rate, sleep, steps and the like), and
+cameras. What else stays home is yours to choose: see [what is sent](okf/spec/01-telemetry.md).
 
 ## Develop
 

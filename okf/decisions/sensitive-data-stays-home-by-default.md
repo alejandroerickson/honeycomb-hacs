@@ -17,9 +17,9 @@ third party.
 
 ## Decision
 
-- Excluded by default: `device_tracker`, `person`, `zone`, location attributes, body
-  measurements, cameras and images, media titles, and token-like attributes
-  ([the list](../spec/01-telemetry.md)).
+- Excluded by default: `device_tracker`, `person`, `zone`, location attributes, the companion
+  app's phone sensors, body measurements, cameras and images, media titles, and token-like
+  attributes ([the list](../spec/01-telemetry.md)).
 - A user includes any of them only by naming it.
 - People appear by their Home Assistant user's name, never their user id.
 

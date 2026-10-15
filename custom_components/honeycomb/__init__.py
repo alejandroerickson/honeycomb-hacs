@@ -7,16 +7,34 @@ and the registries. What becomes a span is specified in okf/spec/01-telemetry.md
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import CONF_API_KEY
 from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_integration
 
-type HoneycombConfigEntry = ConfigEntry[None]
+from .const import CONF_REGION, CONF_SERVICE_NAME, DOMAIN
+from .sender import SpanSender
+from .states import async_track_states
+
+type HoneycombConfigEntry = ConfigEntry[SpanSender]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: HoneycombConfigEntry) -> bool:
-    """Set up Honeycomb from a config entry. Nothing is sent yet."""
+    """Set up Honeycomb from a config entry: start sending."""
+    integration = await async_get_integration(hass, DOMAIN)
+    sender = SpanSender(
+        hass,
+        api_key=entry.data[CONF_API_KEY],
+        region=entry.data[CONF_REGION],
+        resource={"service.name": entry.data[CONF_SERVICE_NAME]},
+        scope_version=str(integration.version),
+    )
+    entry.runtime_data = sender
+    sender.async_start(entry)
+    entry.async_on_unload(async_track_states(hass, sender))
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: HoneycombConfigEntry) -> bool:
-    """Unload a config entry."""
+    """Unload a config entry, sending what is queued first."""
+    await entry.runtime_data.async_flush()
     return True

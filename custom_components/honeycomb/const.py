@@ -18,3 +18,6 @@ DEFAULT_REGION: Final = "us"
 
 # Honeycomb authenticates every request, ingest and API alike, with this header.
 HEADER_API_KEY: Final = "X-Honeycomb-Team"
+
+# The instrumentation scope every span is sent under.
+SCOPE_NAME: Final = "honeycomb-hacs"

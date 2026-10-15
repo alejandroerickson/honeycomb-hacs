@@ -20,8 +20,12 @@ Assistant already has. Disabling the integration stops it.
 
 | File | Does |
 |---|---|
-| `custom_components/honeycomb/__init__.py` | Sets up and unloads a config entry. |
+| `custom_components/honeycomb/__init__.py` | Sets up a config entry: starts the sender and the state listener; sends what is queued on unload. |
 | `custom_components/honeycomb/config_flow.py` | Asks for the key, region and service name; checks the key with `GET /1/auth`. |
+| `custom_components/honeycomb/states.py` | Listens for `state_changed` and makes a span of each state that ended (1.1, 1.2). |
+| `custom_components/honeycomb/filters.py` | What stays home by default (1.5). |
+| `custom_components/honeycomb/sender.py` | The queue, batching and posting to `/v1/traces` (1.6). |
+| `custom_components/honeycomb/otlp.py` | Spans, and their encoding as OTLP/JSON. |
 | `custom_components/honeycomb/const.py` | The domain, the regions' API hosts, defaults. |
 | `custom_components/honeycomb/strings.json`, `translations/en.json` | The UI's text. |
 
