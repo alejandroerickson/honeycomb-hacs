@@ -41,6 +41,7 @@ jobs:
         with:
           category: integration
           comment: "false"
+          ignore: brands # until the integration has an icon (okf/spec/02-roadmap.md)
 
   publishable:
     name: Nothing private

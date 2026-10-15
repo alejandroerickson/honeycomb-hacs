@@ -21,6 +21,7 @@ status: draft
 | Health spans (1.4) | Planned |
 | Default exclusions, and include/exclude rules in an options flow (1.5) | Planned, before the first release |
 | A demonstration configuration with made-up entities, and Honeycomb queries and boards for it | Planned |
+| An icon (`brand/` assets), then CI's HACS check without `ignore: brands` | Planned |
 | Submission to the HACS default list | Later |
 
 ## Open questions
