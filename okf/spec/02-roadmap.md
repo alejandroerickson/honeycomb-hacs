@@ -24,7 +24,7 @@ status: draft
 | Include/exclude rules and allowed attributes (`ha.attr.<name>`) in an options flow (1.5) | Built |
 | A demonstration configuration with made-up entities, and Honeycomb queries and boards for it | Planned |
 | An icon: Honeycomb's mark in `brand/`, which Home Assistant and HACS's brands check read | Built |
-| Submission to the HACS default list | Later |
+| Submission to the HACS default list | Not planned: users add it with the README's button ([decision](../decisions/releases-are-github-releases-hacs-installs.md)) |
 
 ## Open questions
 
