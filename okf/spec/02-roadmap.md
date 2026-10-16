@@ -21,7 +21,7 @@ status: draft
 | Health spans: start-up time, stopping, integrations that failed (1.4) | Built |
 | Activity spans: what a thermostat or humidifier was doing (1.7) | Built |
 | Default exclusions (1.5) | Built |
-| Include/exclude rules and allowed attributes (`ha.attr.<name>`) in an options flow (1.5) | Next, before the first release |
+| Include/exclude rules and allowed attributes (`ha.attr.<name>`) in an options flow (1.5) | Next |
 | A demonstration configuration with made-up entities, and Honeycomb queries and boards for it | Planned |
 | An icon: Honeycomb's mark in `brand/`, which Home Assistant and HACS's brands check read | Built |
 | Submission to the HACS default list | Later |
