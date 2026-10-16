@@ -21,3 +21,10 @@ HEADER_API_KEY: Final = "X-Honeycomb-Team"
 
 # The instrumentation scope every span is sent under.
 SCOPE_NAME: Final = "honeycomb-hacs"
+
+# Options: what the user includes, leaves out, and allows (okf/spec/01-telemetry.md, 1.5).
+CONF_INCLUDE: Final = "include"
+CONF_EXCLUDE: Final = "exclude"
+CONF_EXCLUDE_AREAS: Final = "exclude_areas"
+CONF_EXCLUDE_DEVICE_CLASSES: Final = "exclude_device_classes"
+CONF_ATTRIBUTES: Final = "attributes"

@@ -26,8 +26,8 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.target import TargetSelection, async_extract_referenced_entity_ids
 
-from .describe import describe
-from .filters import is_excluded
+from .describe import describe, state_name
+from .filters import Rules
 from .otlp import AttributeValue, Span
 from .sender import SpanSender
 
@@ -76,6 +76,7 @@ class _Call:
     span: Span
     context_id: str
     deadline: datetime
+    cause: dict[str, str]
     pending: set[str] = field(default_factory=set)
     counts: dict[str, int] = field(default_factory=dict)
 
@@ -86,14 +87,17 @@ class _Call:
 class ContextTracer:
     """Follows contexts from the event bus and turns them into traces."""
 
-    def __init__(self, hass: HomeAssistant, sender: SpanSender) -> None:
+    def __init__(self, hass: HomeAssistant, sender: SpanSender, rules: Rules) -> None:
         self._hass = hass
         self._sender = sender
+        self._rules = rules
         self._traces: OrderedDict[str, _Trace] = OrderedDict()
         self._runs_by_entity: dict[str, deque[_Run]] = {}
         self._runs_by_context: dict[str, list[_Run]] = {}
         self._calls: list[_Call] = []
         self._calls_by_target: dict[str, _Call] = {}
+        # The call each entity's last change answered, by the context of that change.
+        self._answered: dict[str, tuple[str, _Call]] = {}
         self._users: dict[str, str] = {}
 
     async def async_start(self) -> list[CALLBACK_TYPE]:
@@ -117,10 +121,27 @@ class ContextTracer:
     def _users_changed(self, _event: Event) -> None:
         self._hass.async_create_task(self._async_load_users(), eager_start=False)
 
-    def cause(self, context: Context) -> dict[str, str]:
-        """Who or what caused a change in this context, for a state span."""
-        trace = self._traces.get(context.id)
-        return dict(trace.cause) if trace else {}
+    def change_cause(
+        self, entity_id: str, context: Context, *, answered: bool = True
+    ) -> dict[str, AttributeValue]:
+        """Who or what caused a change to an entity in this context, with the context's id.
+
+        A device that responds more than five seconds after a call gets a new context from Home
+        Assistant; its change is still the call's doing. With `answered`, a change to an entity a
+        call is waiting on, or that answered one, is credited to that call.
+        """
+        if trace := self._traces.get(context.id):
+            return {**trace.cause, "ha.context.id": context.id}
+        if answered:
+            call = self._calls_by_target.get(entity_id)
+            if call is None and (last := self._answered.get(entity_id)) and last[0] == context.id:
+                call = last[1]
+            if call is not None:
+                return {**call.cause, "ha.context.id": call.context_id}
+        # Caused by a person or an automation the integration did not follow.
+        if context.user_id or context.parent_id:
+            return {"ha.context.id": context.id}
+        return {}
 
     # ---- Runs: automations and scripts ---------------------------------------------------------
 
@@ -225,10 +246,11 @@ class ContextTracer:
                 span.attributes["ha.user"] = cause["ha.user"] = user
             self._remember(context.id, _Trace(span.trace_id, span.span_id, cause))
         else:
+            cause = trace.cause
             span.trace_id = trace.trace_id
             span.parent_span_id = self._parent_span_id(trace, context.id)
 
-        call = _Call(span, context.id, start + RESPONSE_TIMEOUT)
+        call = _Call(span, context.id, start + RESPONSE_TIMEOUT, dict(cause))
         requested = REQUESTED.get(service)
         for entity_id in targets:
             state = self._hass.states.get(entity_id)
@@ -241,8 +263,10 @@ class ContextTracer:
                 call.count("already")
             else:
                 if previous := self._calls_by_target.get(entity_id):
+                    # Not answered before a newer call: the older call's wait for it ends here.
                     previous.pending.discard(entity_id)
                     previous.count("superseded")
+                    self._sender.add(self._unanswered_span(previous, entity_id, "superseded", start))
                     if not previous.pending:
                         self._finish_call(previous, start)
                 call.pending.add(entity_id)
@@ -266,7 +290,7 @@ class ContextTracer:
             entity_id
             for entity_id in entity_ids
             if (state := self._hass.states.get(entity_id)) is None
-            or not is_excluded(state, entities.async_get(entity_id))
+            or not self._rules.excluded(self._hass, state, entities.async_get(entity_id))
         }
         return None if entity_ids and not kept else kept
 
@@ -282,10 +306,12 @@ class ContextTracer:
         call = self._calls_by_target.pop(entity_id, None)
         if call is None or new is None:
             return
+        self._answered[entity_id] = (new.context.id, call)
         call.pending.discard(entity_id)
         call.count("changed")
         attributes: dict[str, AttributeValue] = {
             **describe(self._hass, new, er.async_get(self._hass).async_get(entity_id)),
+            **self._rules.allowed_attributes(new),
             "ha.type": "response",
             "ha.state": new.state,
             "ha.effect": "changed",
@@ -297,7 +323,7 @@ class ContextTracer:
         end = new.last_updated
         self._sender.add(
             Span(
-                f"{new.domain} → {new.state}",
+                f"{new.domain} → {state_name(new)}",
                 call.span.start,
                 max(end, call.span.start),
                 attributes,
@@ -313,22 +339,7 @@ class ContextTracer:
         for call in [call for call in self._calls if now >= call.deadline]:
             for entity_id in sorted(call.pending):
                 self._calls_by_target.pop(entity_id, None)
-                attributes: dict[str, AttributeValue] = {"ha.entity_id": entity_id}
-                if state := self._hass.states.get(entity_id):
-                    attributes = describe(self._hass, state, er.async_get(self._hass).async_get(entity_id))
-                attributes.update(
-                    {"ha.type": "response", "ha.effect": "none", "ha.context.id": call.context_id}
-                )
-                self._sender.add(
-                    Span(
-                        f"{entity_id.split('.', 1)[0]} → no effect",
-                        call.span.start,
-                        call.deadline,
-                        attributes,
-                        trace_id=call.span.trace_id,
-                        parent_span_id=call.span.span_id,
-                    )
-                )
+                self._sender.add(self._unanswered_span(call, entity_id, "none", call.deadline))
             call.count("none", len(call.pending))
             call.pending.clear()
             self._finish_call(call, call.deadline)
@@ -336,6 +347,22 @@ class ContextTracer:
         for runs in list(self._runs_by_entity.values()):
             while runs and runs[0].span.start < cutoff:
                 self._end_run(runs.popleft(), now, timed_out=True)
+
+    def _unanswered_span(self, call: _Call, entity_id: str, effect: str, end: datetime) -> Span:
+        """A target that did not respond to a call: before the timeout (`none`), or before a newer call."""
+        attributes: dict[str, AttributeValue] = {"ha.entity_id": entity_id}
+        if state := self._hass.states.get(entity_id):
+            attributes = describe(self._hass, state, er.async_get(self._hass).async_get(entity_id))
+        attributes.update({"ha.type": "response", "ha.effect": effect, "ha.context.id": call.context_id})
+        label = "no effect" if effect == "none" else effect
+        return Span(
+            f"{entity_id.split('.', 1)[0]} → {label}",
+            call.span.start,
+            max(end, call.span.start),
+            attributes,
+            trace_id=call.span.trace_id,
+            parent_span_id=call.span.span_id,
+        )
 
     def _finish_call(self, call: _Call, end: datetime) -> None:
         if call in self._calls:

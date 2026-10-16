@@ -31,5 +31,27 @@
         "eu": "Europe (api.eu1.honeycomb.io)"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "What to send",
+        "description": "Everything in the home is sent, except where people are, readings from bodies, phones' sensors and cameras. Leave out more here, or send some of those anyway.",
+        "data": {
+          "exclude": "Leave out these entities",
+          "exclude_areas": "Leave out these areas",
+          "exclude_device_classes": "Leave out these device classes",
+          "include": "Send these anyway",
+          "attributes": "Also send these attributes"
+        },
+        "data_description": {
+          "exclude": "Entity ids; `*` stands for any text: `sensor.*_power` leaves out every power sensor, `sensor.*` every sensor.",
+          "exclude_areas": "Every entity in these areas, or on a device in them.",
+          "exclude_device_classes": "For example `power` or `energy`.",
+          "include": "Entity ids or patterns of what is left out by default, such as `device_tracker.example_phone`. What you leave out above stays out.",
+          "attributes": "Attribute names, such as `brightness`. Each is sent as `ha.attr.` and its name, for every entity that has it."
+        }
+      }
+    }
   }
 }

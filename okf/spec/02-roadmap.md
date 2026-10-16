@@ -16,12 +16,12 @@ status: draft
 | Config flow: API key, region, service name, checked against Honeycomb's `/1/auth` | Built |
 | Repository: CI, hassfest and HACS validation, the privacy check and hooks | Built |
 | OTLP/JSON sender with batching and a bounded queue (1.6) | Built |
-| State spans (1.1, 1.2), with what caused them and the entity's device | Built, without `ha.attr.<name>` |
+| State spans (1.1, 1.2), with what began and ended them and the entity's device | Built |
 | Context traces: automation and script runs, people's actions, service calls and each device's response (1.3) | Built |
 | Health spans: start-up time, stopping, integrations that failed (1.4) | Built |
 | Activity spans: what a thermostat or humidifier was doing (1.7) | Built |
 | Default exclusions (1.5) | Built |
-| Include/exclude rules and allowed attributes (`ha.attr.<name>`) in an options flow (1.5) | Next |
+| Include/exclude rules and allowed attributes (`ha.attr.<name>`) in an options flow (1.5) | Built |
 | A demonstration configuration with made-up entities, and Honeycomb queries and boards for it | Planned |
 | An icon: Honeycomb's mark in `brand/`, which Home Assistant and HACS's brands check read | Built |
 | Submission to the HACS default list | Later |
@@ -36,4 +36,5 @@ status: draft
 - How to send a burst after Home Assistant starts. Entities appearing send nothing, but many end a
   short `unavailable` or `unknown` state as their integrations connect.
 - What to do about entities that change every few seconds (power, signal strength): each change is
-  a span, which may be more than a home wants to send.
+  a span, which may be more than a home wants to send. The options can leave them out; whether some
+  should be left out by default is open.

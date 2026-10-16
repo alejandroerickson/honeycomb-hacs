@@ -13,7 +13,7 @@ Honeycomb as traces:
   phone-app action becomes a trace: the request, then each device's response and how long it took.
 - **Automation runs, with what they caused.** Each run is a trace from its trigger to its end, with
   the service calls it made and the state changes they produced. A command a device ignored shows
-  up as a call with no effect.
+  up as a call with no effect, or as superseded when a newer command reached it first.
 - **What devices were doing.** A thermostat set to heat is not always heating: each heating
   run is a span of its own, with the temperatures when it ended.
 - **Home Assistant's own health:** how long it took to start, restarts, integrations failing to
@@ -22,8 +22,7 @@ Honeycomb as traces:
 It runs inside Home Assistant, so there is nothing else to host, and it reads only Home Assistant's
 public interfaces, so it does not break when Home Assistant's internals change.
 
-> **Status: early.** Everything below is sent. The options to choose what else stays home are being
-> built. See the [roadmap](okf/spec/02-roadmap.md).
+> **Status: early.** 0.1.0 is the first release. See the [roadmap](okf/spec/02-roadmap.md).
 
 ## Install
 
@@ -32,6 +31,8 @@ public interfaces, so it does not break when Home Assistant's internals change.
 2. Install **Honeycomb** and restart Home Assistant.
 3. **Settings › Devices & services › Add integration › Honeycomb.** Paste an ingest key from the
    Honeycomb environment the home's telemetry should go to, and choose the region your team is in.
+4. To choose what else is sent or left out: **Settings › Devices & services › Honeycomb ›
+   Configure**.
 
 Turn it off by disabling the integration.
 
@@ -39,7 +40,9 @@ Turn it off by disabling the integration.
 
 By default it leaves out people's locations (`device_tracker`, `person`, `zone`), phones' sensors
 from the companion app, sensors that describe a body (heart rate, sleep, steps and the like), and
-cameras. What else stays home is yours to choose: see [what is sent](okf/spec/01-telemetry.md).
+cameras. What else stays home is yours to choose under **Configure**: leave out entities by pattern
+(`sensor.*_power`), area or device class; send any of the defaults anyway by naming them; and send
+attributes such as `brightness`. See [what is sent](okf/spec/01-telemetry.md).
 
 ## Develop
 

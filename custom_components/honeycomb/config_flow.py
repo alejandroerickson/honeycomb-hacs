@@ -1,4 +1,8 @@
-"""Config flow for Honeycomb: an API key, the region its team lives in, and a service name."""
+"""Config flow for Honeycomb: an API key, the region its team lives in, and a service name.
+
+The options flow holds the user's choices of what else to send or leave out
+(okf/spec/01-telemetry.md, 1.5).
+"""
 
 from __future__ import annotations
 
@@ -6,10 +10,13 @@ from typing import Any
 
 import aiohttp
 import voluptuous as vol
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlowWithReload
 from homeassistant.const import CONF_API_KEY
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    AreaSelector,
+    AreaSelectorConfig,
     SelectSelector,
     SelectSelectorConfig,
     TextSelector,
@@ -18,6 +25,11 @@ from homeassistant.helpers.selector import (
 )
 
 from .const import (
+    CONF_ATTRIBUTES,
+    CONF_EXCLUDE,
+    CONF_EXCLUDE_AREAS,
+    CONF_EXCLUDE_DEVICE_CLASSES,
+    CONF_INCLUDE,
     CONF_REGION,
     CONF_SERVICE_NAME,
     DEFAULT_REGION,
@@ -34,6 +46,20 @@ STEP_USER_SCHEMA = vol.Schema(
             SelectSelectorConfig(options=list(REGIONS), translation_key=CONF_REGION)
         ),
         vol.Required(CONF_SERVICE_NAME, default=DEFAULT_SERVICE_NAME): str,
+    }
+)
+
+
+# Names typed in, one per chip: entity id patterns, device classes, attribute names.
+_NAMES = SelectSelector(SelectSelectorConfig(options=[], multiple=True, custom_value=True))
+
+OPTIONS_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_EXCLUDE, default=[]): _NAMES,
+        vol.Optional(CONF_EXCLUDE_AREAS, default=[]): AreaSelector(AreaSelectorConfig(multiple=True)),
+        vol.Optional(CONF_EXCLUDE_DEVICE_CLASSES, default=[]): _NAMES,
+        vol.Optional(CONF_INCLUDE, default=[]): _NAMES,
+        vol.Optional(CONF_ATTRIBUTES, default=[]): _NAMES,
     }
 )
 
@@ -67,6 +93,12 @@ class HoneycombConfigFlow(ConfigFlow, domain=DOMAIN):
 
     VERSION = 1
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> HoneycombOptionsFlow:
+        """What to send: the options."""
+        return HoneycombOptionsFlow()
+
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Ask for the key and check it with Honeycomb."""
         errors: dict[str, str] = {}
@@ -98,4 +130,17 @@ class HoneycombConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="user",
             data_schema=self.add_suggested_values_to_schema(STEP_USER_SCHEMA, user_input),
             errors=errors,
+        )
+
+
+class HoneycombOptionsFlow(OptionsFlowWithReload):
+    """Choose what else to send, and what to leave out."""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """One form; saving it reloads the integration with the new choices."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self.add_suggested_values_to_schema(OPTIONS_SCHEMA, self.config_entry.options),
         )

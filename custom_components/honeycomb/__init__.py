@@ -13,6 +13,7 @@ from homeassistant.loader import async_get_integration
 
 from .const import CONF_REGION, CONF_SERVICE_NAME, DOMAIN
 from .contexts import ContextTracer
+from .filters import Rules
 from .health import async_track_health
 from .sender import SpanSender
 from .states import StateTracker
@@ -31,10 +32,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: HoneycombConfigEntry) ->
         scope_version=str(integration.version),
     )
     entry.runtime_data = sender
-    contexts = ContextTracer(hass, sender)
+    # The options flow reloads the entry when the user's choices change.
+    rules = Rules.from_options(entry.options)
+    contexts = ContextTracer(hass, sender, rules)
     for unsub in [
         *await contexts.async_start(),
-        StateTracker(hass, sender, contexts).async_start(),
+        StateTracker(hass, sender, contexts, rules).async_start(),
         *async_track_health(hass, sender),
     ]:
         entry.async_on_unload(unsub)

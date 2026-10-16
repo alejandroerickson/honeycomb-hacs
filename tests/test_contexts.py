@@ -81,8 +81,19 @@ async def test_person_action(
     assert attributes(response)["ha.same_context"] is True
 
     [state] = _by_type(spans, "state")
-    assert attributes(state)["ha.cause"] == "person"
-    assert attributes(state)["ha.user"] == "Example Person"
+    assert state["name"] == "light off"
+    assert attributes(state)["ha.next_cause"] == "person"
+    assert attributes(state)["ha.next_user"] == "Example Person"
+    assert attributes(state)["ha.next_context.id"] == context.id
+
+    # The state the person began says so when it ends.
+    hass.states.async_set(LIGHT, "off")
+    spans = await _spans(entry, aioclient_mock, hass)
+    light_on = next(span for span in _by_type(spans, "state") if span["name"] == "light on")
+    assert attributes(light_on)["ha.cause"] == "person"
+    assert attributes(light_on)["ha.user"] == "Example Person"
+    assert attributes(light_on)["ha.context.id"] == context.id
+    assert "ha.next_cause" not in attributes(light_on)
 
 
 async def test_no_effect(
@@ -209,8 +220,8 @@ async def test_automation_run(
     assert {span["traceId"] for span in (run, action, response)} == {run["traceId"]}
 
     [light_off] = [span for span in _by_type(spans, "state") if span["name"] == "light off"]
-    assert attributes(light_off)["ha.cause"] == "automation"
-    assert attributes(light_off)["ha.cause.name"] == "Example motion lights"
+    assert attributes(light_off)["ha.next_cause"] == "automation"
+    assert attributes(light_off)["ha.next_cause.name"] == "Example motion lights"
 
 
 async def test_script_in_automation(
@@ -244,3 +255,47 @@ async def test_script_in_automation(
     assert {span["traceId"] for span in spans if attributes(span)["ha.type"] != "state"} == {
         automation["traceId"]
     }
+
+
+async def test_slow_device(
+    hass: HomeAssistant, entry: MockConfigEntry, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """A device that responds after Home Assistant has dropped the call's context still answers it."""
+    _respond(hass, ignore=(LIGHT,))
+    hass.states.async_set(LIGHT, "off")
+    context = await _person(hass)
+    await hass.services.async_call("light", "turn_on", {"entity_id": LIGHT}, blocking=True, context=context)
+    hass.states.async_set(LIGHT, "on", context=Context())
+    hass.states.async_set(LIGHT, "off")
+
+    spans = await _spans(entry, aioclient_mock, hass)
+    [response] = _by_type(spans, "response")
+    assert attributes(response)["ha.same_context"] is False
+    light_on = next(span for span in _by_type(spans, "state") if span["name"] == "light on")
+    assert attributes(light_on)["ha.cause"] == "person"
+    assert attributes(light_on)["ha.context.id"] == context.id
+
+
+async def test_superseded(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    entry: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    """A call the device had not answered before a newer one says so, with a response span."""
+    _respond(hass, ignore=(LIGHT,))
+    hass.states.async_set(LIGHT, "off")
+    first, second = await _person(hass), await _person(hass)
+    await hass.services.async_call("light", "turn_on", {"entity_id": LIGHT}, blocking=True, context=first)
+    freezer.tick(timedelta(seconds=20))
+    await hass.services.async_call("light", "turn_on", {"entity_id": LIGHT}, blocking=True, context=second)
+
+    spans = await _spans(entry, aioclient_mock, hass)
+    [action] = _by_type(spans, "action")
+    [response] = _by_type(spans, "response")
+    assert attributes(action)["ha.context.id"] == first.id
+    assert attributes(action)["ha.superseded"] == 1
+    assert response["name"] == "light → superseded"
+    assert response["parentSpanId"] == action["spanId"]
+    assert attributes(response)["ha.effect"] == "superseded"
+    assert int(response["endTimeUnixNano"]) - int(response["startTimeUnixNano"]) == 20 * 10**9

@@ -75,7 +75,8 @@ async def test_numeric_state(
     hass.states.async_set("sensor.example_outdoor_temperature", "13", sensor)
 
     first, second = await _spans(hass, entry, aioclient_mock)
-    assert first["name"] == "sensor 12.5"
+    # Named by the kind of value, not the value, so that span names stay few.
+    assert first["name"] == "sensor temperature"
     assert attributes(first) == {
         "ha.type": "state",
         "ha.entity_id": "sensor.example_outdoor_temperature",
@@ -116,8 +117,35 @@ async def test_context(
 ) -> None:
     hass.states.async_set("light.example_kitchen", "off")
     hass.states.async_set("light.example_kitchen", "on", context=context)
+    hass.states.async_set("light.example_kitchen", "off")
+    ended, began = await _spans(hass, entry, aioclient_mock)
+    # The change in this context ended the first state and began the second.
+    assert attributes(ended).get("ha.next_context.id") == (context.id if has_context_id else None)
+    assert attributes(began).get("ha.context.id") == (context.id if has_context_id else None)
+    assert "ha.next_context.id" not in attributes(began)
+
+
+@pytest.mark.parametrize(
+    ("state", "attributes_", "name"),
+    [
+        ("1180.2", {"device_class": "power"}, "sensor power"),
+        ("42", {}, "sensor value"),
+        ("washing", {"device_class": "enum"}, "sensor washing"),
+        ("unavailable", {"device_class": "power"}, "sensor unavailable"),
+    ],
+)
+async def test_value_names(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+    state: str,
+    attributes_: dict,
+    name: str,
+) -> None:
+    hass.states.async_set("sensor.example_washer", state, attributes_)
+    hass.states.async_set("sensor.example_washer", "0", attributes_)
     [span] = await _spans(hass, entry, aioclient_mock)
-    assert attributes(span).get("ha.context.id") == (context.id if has_context_id else None)
+    assert span["name"] == name
 
 
 async def test_area_and_floor(

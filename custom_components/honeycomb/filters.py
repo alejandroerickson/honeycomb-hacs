@@ -1,4 +1,4 @@
-"""What stays home by default (okf/spec/01-telemetry.md, 1.5).
+"""What stays home: by default, and by the user's rules (okf/spec/01-telemetry.md, 1.5).
 
 A default here is removed only by a new decision; adding one needs none
 (okf/decisions/sensitive-data-stays-home-by-default.md).
@@ -6,11 +6,27 @@ A default here is removed only by a new decision; adding one needs none
 
 from __future__ import annotations
 
+import json
+import math
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass
+from fnmatch import fnmatchcase
+from typing import Any
 
-from homeassistant.const import ATTR_UNIT_OF_MEASUREMENT
-from homeassistant.core import State
+from homeassistant.const import ATTR_DEVICE_CLASS, ATTR_UNIT_OF_MEASUREMENT
+from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.entity_registry import RegistryEntry
+
+from .const import (
+    CONF_ATTRIBUTES,
+    CONF_EXCLUDE,
+    CONF_EXCLUDE_AREAS,
+    CONF_EXCLUDE_DEVICE_CLASSES,
+    CONF_INCLUDE,
+)
+from .describe import area_id
+from .otlp import AttributeValue
 
 # Where people are, and what cameras see.
 EXCLUDED_DOMAINS = frozenset({"device_tracker", "person", "zone", "camera", "image"})
@@ -42,3 +58,52 @@ def is_excluded(state: State, entry: RegistryEntry | None) -> bool:
             or BODY_WORDS.search(state.object_id) is not None
         )
     return False
+
+
+@dataclass(frozen=True)
+class Rules:
+    """The user's choices, from the integration's options."""
+
+    include: tuple[str, ...] = ()
+    exclude: tuple[str, ...] = ()
+    exclude_areas: frozenset[str] = frozenset()
+    exclude_device_classes: frozenset[str] = frozenset()
+    attributes: tuple[str, ...] = ()
+
+    @classmethod
+    def from_options(cls, options: Mapping[str, Any]) -> Rules:
+        def names(key: str) -> tuple[str, ...]:
+            return tuple(name.strip() for name in options.get(key) or () if name and name.strip())
+
+        return cls(
+            include=tuple(name.lower() for name in names(CONF_INCLUDE)),
+            exclude=tuple(name.lower() for name in names(CONF_EXCLUDE)),
+            exclude_areas=frozenset(names(CONF_EXCLUDE_AREAS)),
+            exclude_device_classes=frozenset(names(CONF_EXCLUDE_DEVICE_CLASSES)),
+            attributes=names(CONF_ATTRIBUTES),
+        )
+
+    def excluded(self, hass: HomeAssistant, state: State, entry: RegistryEntry | None) -> bool:
+        """Whether an entity's states stay home. What the user leaves out stays out, even if included."""
+        if _matches(state.entity_id, self.exclude):
+            return True
+        if state.attributes.get(ATTR_DEVICE_CLASS) in self.exclude_device_classes:
+            return True
+        if self.exclude_areas and area_id(hass, entry) in self.exclude_areas:
+            return True
+        return is_excluded(state, entry) and not _matches(state.entity_id, self.include)
+
+    def allowed_attributes(self, state: State) -> dict[str, AttributeValue]:
+        """The attributes the user allows, as `ha.attr.<name>`."""
+        allowed: dict[str, AttributeValue] = {}
+        for name in self.attributes:
+            value = state.attributes.get(name)
+            if isinstance(value, (bool, int, str)) or (isinstance(value, float) and math.isfinite(value)):
+                allowed[f"ha.attr.{name}"] = value
+            elif value is not None:
+                allowed[f"ha.attr.{name}"] = json.dumps(value, default=str)
+        return allowed
+
+
+def _matches(entity_id: str, patterns: tuple[str, ...]) -> bool:
+    return any(fnmatchcase(entity_id, pattern) for pattern in patterns)

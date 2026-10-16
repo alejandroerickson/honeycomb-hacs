@@ -25,7 +25,11 @@ Every span has `ha.type`, saying which kind it is: `state` (1.1, 1.2), `automati
 
 When an entity's state changes, the integration MUST send one span covering the state that just
 ended: from its `last_changed` to the new state's `last_changed`. The span is named
-`<domain> <old state>` (`light on`, `binary_sensor on`, `climate heat`).
+`<domain> <old state>` (`light on`, `binary_sensor on`, `climate heat`), except where the state is a
+free value: for `sensor`, `number`, `input_number`, `counter`, `input_text`, `text`,
+`input_datetime`, `date`, `datetime`, `time` and `event`, the name gives the device class instead
+(`sensor power`), or `value` when there is none, so that names stay few. An `enum` sensor, and any
+entity `unavailable` or `unknown`, keeps its state in the name.
 
 Only a change of state ends one. An entity appearing, an entity being removed and a change of
 attributes alone send nothing.
@@ -41,11 +45,15 @@ number `ha.value` as a float, and what every span about an entity says about it:
 
 An attribute with no value is left off. Attributes the user allows are added as `ha.attr.<name>`.
 
-A span whose state ended in a change caused by a context (one with a user or a parent: a person, an
-automation) carries `ha.context.id`. When that context belongs to a trace the integration followed
-(1.3), the span also says what caused it: `ha.cause` (`automation`, `script` or `person`) with
-`ha.cause.name` (the automation's or script's name) or `ha.user`. The span stays a trace of its own,
-since the state began long before the trace did; the trace has a response span for the change.
+A span says what began its state and what ended it, when a context did (one with a user or a
+parent: a person, an automation). For the change that began the state: `ha.context.id`, and when
+that context belongs to a trace the integration followed (1.3), `ha.cause` (`automation`, `script`
+or `person`) with `ha.cause.name` (the automation's or script's name) or `ha.user`. For the change
+that ended it, the same with `next`: `ha.next_context.id`, `ha.next_cause`, `ha.next_cause.name`,
+`ha.next_user`. A change that answered a call is the call's doing, even when the device was too
+slow to keep the call's context (1.3). What began the first state seen after start-up is known only
+if its context was followed. The span stays a trace of its own, since the state began long before
+the trace did; the trace has a response span for the change.
 
 ◆ Decision: a span describes a state that *ended*, so its duration is known when it is sent and
 nothing is held in memory longer than one state.
@@ -84,11 +92,14 @@ a trace, and its parent to the parent trace.
   how long the device took. It is named `<domain> → <new state>` (`light → on`) and carries the
   entity's attributes (1.1), `ha.state`, `ha.previous_state`, `ha.effect: changed` and
   `ha.same_context`, whether the change carried the call's context (a device that reports more
-  than five seconds later gets a new one). A target that does not change before the timeout gets a
-  span named `<domain> → no effect` with `ha.effect: none`, ending at the timeout. A target already
-  in the requested state (`turn_on`, `turn_off`, opening, closing, locking, unlocking) or
-  unavailable gets no response span. When a newer call targets the same entity, the change answers
-  the newer call, and the older one counts it as superseded.
+  than five seconds later gets a new one; its change still answers the call). A free value is named
+  as in 1.1. A target that does not change before the timeout gets a span named
+  `<domain> → no effect` with `ha.effect: none`, ending at the timeout. A target already in the
+  requested state (`turn_on`, `turn_off`, opening, closing, locking, unlocking) or unavailable gets
+  no response span. When a newer call targets an entity before it has responded, the change answers
+  the newer call, and the older call gets a span named `<domain> → superseded` with
+  `ha.effect: superseded`, ending when the newer call was made, so a command that was never carried
+  out is not hidden by the one that followed it.
 
 Delays and waits inside an automation appear as the gaps between its children. Step names and
 condition results are not available through public interfaces and are not sent; `ha.automation_id`
@@ -126,8 +137,17 @@ taken to describe a body when its unit is one only a body has (`bpm`, `beats/min
 `sleep`, `asleep`, `steps`, `vo2max` and the like; the list is in `filters.py`). An entity is left
 out when either the state that ended or the next one matches.
 
-Users choose more with include and exclude rules by domain, entity id pattern, area or device
-class ([decision](../decisions/sensitive-data-stays-home-by-default.md)).
+Users choose more in the integration's options
+([decision](../decisions/sensitive-data-stays-home-by-default.md)); saving them reloads the
+integration:
+
+- **Leave out**: entity id patterns, where `*` stands for any text (`sensor.*_power`; `sensor.*`
+  for a whole domain), areas (an entity's own, or else its device's) and device classes.
+- **Send anyway**: entity id patterns for what is left out by default. What the user leaves out
+  stays out even when it is also included.
+- **Attributes**: attribute names, sent as `ha.attr.<name>` on every span about an entity that has
+  them. A number, text or true/false is sent as it is; anything else as JSON. Naming a location or
+  token attribute here is including it by name.
 
 ## 1.6 Delivery
 
