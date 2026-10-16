@@ -26,8 +26,10 @@ public interfaces, so it does not break when Home Assistant's internals change.
 
 ## Install
 
+[![Open your Home Assistant instance and open this repository in the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alejandroerickson&repository=honeycomb-hacs&category=integration)
+
 1. In HACS, add this repository as a custom repository (category **Integration**):
-   `https://github.com/alejandroerickson/honeycomb-hacs`.
+   `https://github.com/alejandroerickson/honeycomb-hacs`. The button above does this for you.
 2. Install **Honeycomb** and restart Home Assistant.
 3. **Settings › Devices & services › Add integration › Honeycomb.** Paste an ingest key from the
    Honeycomb environment the home's telemetry should go to, and choose the region your team is in.
