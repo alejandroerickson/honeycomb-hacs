@@ -31,6 +31,7 @@ Assistant already has. Disabling the integration stops it.
 | `custom_components/honeycomb/otlp.py` | Spans, and their encoding as OTLP/JSON. |
 | `custom_components/honeycomb/const.py` | The domain, the regions' API hosts, defaults. |
 | `custom_components/honeycomb/strings.json`, `translations/en.json` | The UI's text. |
+| `custom_components/honeycomb/brand/` | The icon (Honeycomb's mark), 256 and 512 px; Home Assistant shows it for the integration. |
 
 ## Repository map
 

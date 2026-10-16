@@ -34,3 +34,6 @@ htmlcov/
 
 # Documentation holds reference knowledge only
 /okf/log.md
+
+# The global excludes ignore "Icon*" (macOS folder icons), which also matches the brand images.
+!custom_components/honeycomb/brand/icon*.png

@@ -23,7 +23,7 @@ status: draft
 | Default exclusions (1.5) | Built |
 | Include/exclude rules and allowed attributes (`ha.attr.<name>`) in an options flow (1.5) | Next, before the first release |
 | A demonstration configuration with made-up entities, and Honeycomb queries and boards for it | Planned |
-| An icon (`brand/` assets), then CI's HACS check without `ignore: brands` | Planned |
+| An icon: Honeycomb's mark in `brand/`, which Home Assistant and HACS's brands check read | Built |
 | Submission to the HACS default list | Later |
 
 ## Open questions
