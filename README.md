@@ -14,14 +14,16 @@ Honeycomb as traces:
 - **Automation runs, with what they caused.** Each run is a trace from its trigger to its end, with
   the service calls it made and the state changes they produced. A command a device ignored shows
   up as a call with no effect.
-- **Home Assistant's own health:** restarts, integrations failing to load, devices going
-  unavailable.
+- **What devices were doing.** A thermostat set to heat is not always heating: each heating
+  run is a span of its own, with the temperatures when it ended.
+- **Home Assistant's own health:** how long it took to start, restarts, integrations failing to
+  load, devices going unavailable.
 
 It runs inside Home Assistant, so there is nothing else to host, and it reads only Home Assistant's
 public interfaces, so it does not break when Home Assistant's internals change.
 
-> **Status: early.** It sends how long each state lasted. People's actions, automation runs and
-> Home Assistant's health are being built. See the [roadmap](okf/spec/02-roadmap.md).
+> **Status: early.** Everything below is sent. The options to choose what else stays home are being
+> built. See the [roadmap](okf/spec/02-roadmap.md).
 
 ## Install
 

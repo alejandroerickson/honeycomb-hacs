@@ -18,10 +18,12 @@ until it doesn't, on every installation at once. The maintainer ruled this out o
 ## Decision
 
 - Read only the event bus (`state_changed`, `call_service`, `automation_triggered`,
-  `script_started` and the lifecycle events), the state machine, and the area, floor, device
-  and entity registries.
+  `script_started`, the lifecycle events and `user_added`/`user_updated`), the state machine, the
+  area, floor, device and entity registries, the config entries' states, and users' names.
+  Resolve a service call's targets with Home Assistant's own target helper
+  (`homeassistant.helpers.target`), so they match what the call acts on.
 - Durations come from what those show: a state's `last_changed`, an automation's or script's
-  `current` attribute falling back, a device's first state change in a service call's context.
+  `current` attribute falling back, a target's first state change after a service call.
 - Never `hass.data` of another integration, or private modules of Home Assistant.
 
 ## Consequences

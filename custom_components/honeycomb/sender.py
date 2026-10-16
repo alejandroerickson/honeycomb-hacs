@@ -65,9 +65,8 @@ class SpanSender:
                 self._hass, self._async_send_on_interval, FLUSH_INTERVAL, cancel_on_shutdown=True
             )
         )
-        entry.async_on_unload(
-            self._hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._async_send_on_stop)
-        )
+        # Not listen_once: removing a one-time listener after it has fired logs an error on unload.
+        entry.async_on_unload(self._hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, self._async_send_on_stop))
 
     @callback
     def add(self, span: Span) -> None:

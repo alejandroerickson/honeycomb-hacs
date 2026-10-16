@@ -27,4 +27,8 @@ def sent_spans(aioclient_mock: AiohttpClientMocker) -> list[dict[str, Any]]:
 
 def attributes(span: dict[str, Any]) -> dict[str, Any]:
     """A span's attributes as a plain dict."""
-    return {item["key"]: next(iter(item["value"].values())) for item in span["attributes"]}
+    return {
+        item["key"]: int(value) if kind == "intValue" else value
+        for item in span["attributes"]
+        for kind, value in item["value"].items()
+    }

@@ -16,19 +16,22 @@ status: draft
 | Config flow: API key, region, service name, checked against Honeycomb's `/1/auth` | Built |
 | Repository: CI, hassfest and HACS validation, the privacy check and hooks | Built |
 | OTLP/JSON sender with batching and a bounded queue (1.6) | Built |
-| State spans (1.1, 1.2), as traces of their own until context traces join them | Built, without `ha.attr.<name>` |
-| Context traces: automation and script runs, service calls, people's actions (1.3) | Next |
-| Health spans (1.4) | Planned |
+| State spans (1.1, 1.2), with what caused them and the entity's device | Built, without `ha.attr.<name>` |
+| Context traces: automation and script runs, people's actions, service calls and each device's response (1.3) | Built |
+| Health spans: start-up time, stopping, integrations that failed (1.4) | Built |
+| Activity spans: what a thermostat or humidifier was doing (1.7) | Built |
 | Default exclusions (1.5) | Built |
-| Include/exclude rules and allowed attributes (`ha.attr.<name>`) in an options flow (1.5) | Planned, before the first release |
+| Include/exclude rules and allowed attributes (`ha.attr.<name>`) in an options flow (1.5) | Next, before the first release |
 | A demonstration configuration with made-up entities, and Honeycomb queries and boards for it | Planned |
 | An icon (`brand/` assets), then CI's HACS check without `ignore: brands` | Planned |
 | Submission to the HACS default list | Later |
 
 ## Open questions
 
-- How long to wait for a device's response before a service call is marked as having no effect;
-  whether it should differ by domain (a cover takes longer than a light).
+- Whether the 60-second wait for a device's response should differ by domain: a cover or a cloud
+  device takes longer than a light.
+- Overlapping runs of a `parallel` automation are matched to their ends in the order they started,
+  which is wrong when a later run finishes first. Public interfaces give nothing better yet.
 - Whether a state span should carry all of an entity's attributes by default, or none.
 - How to send a burst after Home Assistant starts. Entities appearing send nothing, but many end a
   short `unavailable` or `unknown` state as their integrations connect.

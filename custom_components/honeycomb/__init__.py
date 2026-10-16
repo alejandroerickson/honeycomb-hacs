@@ -12,8 +12,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.loader import async_get_integration
 
 from .const import CONF_REGION, CONF_SERVICE_NAME, DOMAIN
+from .contexts import ContextTracer
+from .health import async_track_health
 from .sender import SpanSender
-from .states import async_track_states
+from .states import StateTracker
 
 type HoneycombConfigEntry = ConfigEntry[SpanSender]
 
@@ -29,8 +31,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: HoneycombConfigEntry) ->
         scope_version=str(integration.version),
     )
     entry.runtime_data = sender
+    contexts = ContextTracer(hass, sender)
+    for unsub in [
+        *await contexts.async_start(),
+        StateTracker(hass, sender, contexts).async_start(),
+        *async_track_health(hass, sender),
+    ]:
+        entry.async_on_unload(unsub)
+    # Last, so the health span for stopping is queued before the final send.
     sender.async_start(entry)
-    entry.async_on_unload(async_track_states(hass, sender))
     return True
 
 

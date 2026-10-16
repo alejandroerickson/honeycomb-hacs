@@ -48,6 +48,7 @@ async def test_state_span(
     assert span["endTimeUnixNano"] == str(unix_nano(off.last_changed))
     assert int(span["endTimeUnixNano"]) - int(span["startTimeUnixNano"]) == 42 * 60 * 10**9
     assert attributes(span) == {
+        "ha.type": "state",
         "ha.entity_id": "light.example_kitchen",
         "ha.domain": "light",
         "ha.state": "on",
@@ -76,6 +77,7 @@ async def test_numeric_state(
     first, second = await _spans(hass, entry, aioclient_mock)
     assert first["name"] == "sensor 12.5"
     assert attributes(first) == {
+        "ha.type": "state",
         "ha.entity_id": "sensor.example_outdoor_temperature",
         "ha.domain": "sensor",
         "ha.state": "12.5",
@@ -239,7 +241,7 @@ async def test_sent_when_home_assistant_stops(
     hass.states.async_set("light.example_kitchen", "off")
     hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
     await hass.async_block_till_done()
-    assert len(sent_spans(aioclient_mock)) == 1
+    assert [span["name"] for span in sent_spans(aioclient_mock)] == ["light on", "homeassistant stop"]
 
 
 async def test_sent_on_unload(
@@ -252,3 +254,69 @@ async def test_sent_on_unload(
     hass.states.async_set("light.example_kitchen", "on")
     await hass.async_block_till_done()
     assert len(sent_spans(aioclient_mock)) == 1
+
+
+async def test_device(
+    hass: HomeAssistant,
+    entry: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+    device_registry: dr.DeviceRegistry,
+    entity_registry: er.EntityRegistry,
+) -> None:
+    device = device_registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={("example", "1")},
+        name="Example Bulb",
+        manufacturer="Example Devices",
+        model="Example Bulb Mk 2",
+    )
+    light = entity_registry.async_get_or_create("light", "example", "1", device_id=device.id)
+    hass.states.async_set(light.entity_id, "on")
+    hass.states.async_set(light.entity_id, "off")
+    [span] = await _spans(hass, entry, aioclient_mock)
+    assert {
+        key: value
+        for key, value in attributes(span).items()
+        if key.startswith(("ha.device", "ha.integration"))
+    } == {
+        "ha.integration": "example",
+        "ha.device": "Example Bulb",
+        "ha.device.manufacturer": "Example Devices",
+        "ha.device.model": "Example Bulb Mk 2",
+    }
+
+
+async def test_activity(
+    hass: HomeAssistant,
+    freezer: FrozenDateTimeFactory,
+    entry: MockConfigEntry,
+    aioclient_mock: AiohttpClientMocker,
+) -> None:
+    thermostat = "climate.example_thermostat"
+    readings = {"current_temperature": 19.5, "temperature": 21}
+    hass.states.async_set(thermostat, "heat", {"hvac_action": "idle", **readings})
+    freezer.tick(timedelta(minutes=5))
+    hass.states.async_set(thermostat, "heat", {"hvac_action": "heating", **readings})
+    freezer.tick(timedelta(minutes=12))
+    hass.states.async_set(
+        thermostat, "heat", {"hvac_action": "heating", **readings, "current_temperature": 21.2}
+    )
+    freezer.tick(timedelta(minutes=1))
+    hass.states.async_set(
+        thermostat, "heat", {"hvac_action": "idle", **readings, "current_temperature": 21.3}
+    )
+
+    # The first change starts the clock: when the idle period before it began is not known.
+    [span] = await _spans(hass, entry, aioclient_mock)
+    assert span["name"] == "climate heating"
+    assert int(span["endTimeUnixNano"]) - int(span["startTimeUnixNano"]) == 13 * 60 * 10**9
+    assert attributes(span) == {
+        "ha.type": "activity",
+        "ha.entity_id": thermostat,
+        "ha.domain": "climate",
+        "ha.state": "heat",
+        "ha.activity": "heating",
+        "ha.next_activity": "idle",
+        "ha.current_temperature": 21.2,
+        "ha.temperature": 21.0,
+    }

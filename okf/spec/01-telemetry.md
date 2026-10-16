@@ -11,12 +11,15 @@ status: draft
 
 Draft: this is the design being built. The [roadmap](02-roadmap.md) says what exists.
 
-Everything comes from Home Assistant's public interfaces: the event bus, the state machine and the
-area, device and entity registries
+Everything comes from Home Assistant's public interfaces: the event bus, the state machine, the
+area, floor, device and entity registries, and its users' names
 ([decision](../decisions/only-public-home-assistant-interfaces.md)). Spans go to Honeycomb as OTLP
 over HTTP, encoded as JSON, with the integration's service name as `service.name` and the
 instrumentation scope `honeycomb-hacs` at the integration's version
 ([decision](../decisions/no-requirements-beyond-home-assistant.md)).
+
+Every span has `ha.type`, saying which kind it is: `state` (1.1, 1.2), `automation`, `script`,
+`action` or `response` (1.3), `health` (1.4) or `activity` (1.7).
 
 ## 1.1 State spans: how long each state lasted
 
@@ -27,15 +30,22 @@ ended: from its `last_changed` to the new state's `last_changed`. The span is na
 Only a change of state ends one. An entity appearing, an entity being removed and a change of
 attributes alone send nothing.
 
-Attributes: `ha.entity_id`, `ha.domain`, `ha.state` (the state that ended), `ha.next_state`,
-`ha.area`, `ha.floor`, `ha.device_class`, `ha.unit`, `ha.friendly_name`, and for a state that
-reads as a finite number `ha.value` as a float. `ha.area` is the entity's area, or else its
-device's, and `ha.floor` that area's floor, both by name. An attribute with no value is left off.
-Attributes the user allows are added as `ha.attr.<name>`.
+Attributes: `ha.state` (the state that ended), `ha.next_state`, for a state that reads as a finite
+number `ha.value` as a float, and what every span about an entity says about it:
+
+- `ha.entity_id`, `ha.domain`, `ha.friendly_name`, `ha.device_class`, `ha.unit`;
+- `ha.area`, the entity's area or else its device's, and `ha.floor`, that area's floor, both by
+  name;
+- `ha.integration` (the integration that provides the entity), and its device's `ha.device`
+  (name), `ha.device.manufacturer` and `ha.device.model`.
+
+An attribute with no value is left off. Attributes the user allows are added as `ha.attr.<name>`.
 
 A span whose state ended in a change caused by a context (one with a user or a parent: a person, an
-automation) carries `ha.context.id` and joins that context's trace (1.3). Otherwise it is a trace
-of its own.
+automation) carries `ha.context.id`. When that context belongs to a trace the integration followed
+(1.3), the span also says what caused it: `ha.cause` (`automation`, `script` or `person`) with
+`ha.cause.name` (the automation's or script's name) or `ha.user`. The span stays a trace of its own,
+since the state began long before the trace did; the trace has a response span for the change.
 
 ◆ Decision: a span describes a state that *ended*, so its duration is known when it is sent and
 nothing is held in memory longer than one state.
@@ -51,14 +61,34 @@ Home Assistant gives every action a context; the service calls and state changes
 its id, and the contexts they create carry it as `parent_id`. The integration MUST map a context to
 a trace, and its parent to the parent trace.
 
-- **An automation or script run** is a root span from its `automation_triggered` or
-  `script_started` event to the moment the entity's `current` attribute falls back. Its trigger's
-  description is `ha.trigger`.
-- **A service call** (`call_service`) is a child span that ends when the first entity it targets
-  changes state in the same context: how long the device took. If none changes within a timeout
-  (the default is 60 seconds), the span ends at the timeout with `ha.effect: none`.
-- **A person's action** (a context with a `user_id` and no parent) is a root span named after
-  the service call, with `ha.user` as the user's name, never their id.
+- **An automation or script run** is a span named after the automation or script, from its
+  `automation_triggered` or `script_started` event to the moment the entity's `current` attribute
+  falls back. Attributes: `ha.type` (`automation` or `script`), `ha.entity_id`, `ha.automation_id`
+  or `ha.script_id`, `ha.trigger` (the trigger's description) and `ha.context.id`. A run is the
+  root of its trace, unless what started it belongs to a trace already: a script called by an
+  automation hangs under that call, and an automation triggered by a change another run made joins
+  that run's trace. Overlapping runs of one automation are matched to their ends in the order they
+  started. A run still open after two hours is sent with `ha.timed_out: true`.
+- **A person's action** (a service call in a context with a `user_id` and no parent) is the root
+  span of its trace, with `ha.user` as the user's name, never their id.
+- **A service call** (`call_service`) is a span named `<domain>.<service>` (`light.turn_on`) under
+  the run that made it. Its targets are the entities it names, or that its devices, areas, floors
+  and labels hold, in the service's domain; `ha.targets` is how many. It lasts until every target
+  has responded, or until the timeout (60 seconds). `ha.effect` sums it up: `changed` (every
+  target responded), `partial`, `none` (none did), `already` (every target was already in the
+  requested state) or `unavailable`; `ha.changed`, `ha.none`, `ha.already`, `ha.unavailable` and
+  `ha.superseded` count the targets. The call's data is never sent. A call neither by a person nor
+  inside a run the integration followed is not sent, and nor is one whose targets are all left out
+  (1.5).
+- **A response** is a span under the call, from the call to the target's first change after it:
+  how long the device took. It is named `<domain> → <new state>` (`light → on`) and carries the
+  entity's attributes (1.1), `ha.state`, `ha.previous_state`, `ha.effect: changed` and
+  `ha.same_context`, whether the change carried the call's context (a device that reports more
+  than five seconds later gets a new one). A target that does not change before the timeout gets a
+  span named `<domain> → no effect` with `ha.effect: none`, ending at the timeout. A target already
+  in the requested state (`turn_on`, `turn_off`, opening, closing, locking, unlocking) or
+  unavailable gets no response span. When a newer call targets the same entity, the change answers
+  the newer call, and the older one counts it as superseded.
 
 Delays and waits inside an automation appear as the gaps between its children. Step names and
 condition results are not available through public interfaces and are not sent; `ha.automation_id`
@@ -66,8 +96,15 @@ lets a reader open Home Assistant's own trace.
 
 ## 1.4 Home Assistant's health
 
-`homeassistant_start`, `homeassistant_stop` and a config entry failing to set up are sent as
-spans with `ha.event`.
+Health spans have `ha.type: health` and `ha.version`, Home Assistant's version.
+
+- **`homeassistant start`**: from `homeassistant_start` to `homeassistant_started`, how long
+  Home Assistant took to start. Sent only when the integration is set up as Home Assistant starts,
+  not when it is added to one already running.
+- **`<domain> <state>`** for each config entry that failed to set up by then (`setup_error`,
+  `setup_retry`, `migration_error`), with `ha.integration` and `ha.entry_state`. Never the entry's
+  title or the reason it failed, which can hold names and network addresses.
+- **`homeassistant stop`** when Home Assistant stops.
 
 ## 1.5 What is left out
 
@@ -105,3 +142,15 @@ Assistant never waits on Honeycomb: queueing a span is all an event listener doe
   again would fail the same way.
 - **The queue is full** (10,000 spans): the oldest are dropped first. One warning is logged, then
   how many were dropped once a batch is sent.
+
+## 1.7 Activity spans: what a device was doing
+
+Some devices' state is a setting, not what they are doing: a thermostat set to `heat` is not always
+heating. For these, the integration MUST also send a span covering each activity that ended, as it
+does for states: `hvac_action` for `climate` and `action` for `humidifier`. The span is named
+`<domain> <activity>` (`climate heating`).
+
+Attributes: the entity's (1.1), `ha.state` (the setting), `ha.activity`, `ha.next_activity`, and the
+readings when the activity ended: `ha.current_temperature`, `ha.temperature` (the target),
+`ha.current_humidity`, `ha.humidity`. The first change after start-up starts the clock, since when
+the activity before it began is not known.
